@@ -52,11 +52,9 @@ jobs:
             echo "[]" > tmp/hots.json
           fi
 
-      # 修复点：使用正确的yq语法处理多个文件
       - name: Create all.json
         run: |
           if [ $(ls docs/*.yml 2>/dev/null | wc -l) -gt 0 ]; then
-            # 使用eval-all处理多个文件
             yq eval-all '[.]' -o=json docs/*.yml > output/all.json
           else
             echo '[]' > output/all.json
@@ -72,7 +70,10 @@ jobs:
       - name: Process and combine data
         run: |
           jq --slurpfile hots tmp/hots.json \
-             '{ hots: $hots[0], items: (group_by(.category) | map({ (.[0].category): . }) | add }' \
+             '{
+                hots: $hots[0],
+                items: [group_by(.category)[] | {(.[0].category): .}] | add
+              }' \
              output/all.json > output/combined.json
              
       - name: Convert JSON to YAML
