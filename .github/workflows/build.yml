@@ -26,29 +26,30 @@ jobs:
         run: |
           sudo apt-get update && sudo apt-get install -y jq
 
-      - name: read_hot_sorts
+      - name: read_hots
         id: hot
         run: |
           HOTS="${{ secrets.SECRET_SORT }}"
-          echo "hot_sorts=$HOTS" >> $GITHUB_OUTPUT
+          echo "hots=$HOTS" >> $GITHUB_OUTPUT
 
       - name: merge_docs_to_json
         run: |
           mkdir -p output
+          # load all docs into JSON array
           yq eval-all -o=json '[.]' docs/*.yml > output/all.json
 
-      - name: extract_hot_and_rest
+      - name: extract_hots_and_rest
         run: |
-          HOTS="${{ steps.hot.outputs.hot_sorts }}"
+          HOTS="${{ steps.hot.outputs.hots }}"
           IFS=',' read -ra HOT_ARRAY <<< "$HOTS"
           HOT_JSON=$(jq -n --argjson inp "$(cat output/all.json)" \
-            --argjson hotlist "$(printf '%s\n' "${HOT_ARRAY[@]}" | jq -R -s -c 'split("\n")[:-1]')" \
-            '{hot: ($inp | map(select(.sort as $s | $hotlist | index($s)))) , rest: ($inp | map(select(.sort as $s | $hotlist | index($s) | not)))}')
+            --argjson list "$(printf '%s\n' "${HOT_ARRAY[@]}" | jq -R -s -c 'split("\n")[:-1]')" \
+            '{hots: ($inp | map(select(.sort as $s | $list | index($s))) ), rest: ($inp | map(select(.sort as $s | $list | index($s) | not)))}')
           echo "$HOT_JSON" > output/parted.json
 
       - name: group_items_by_category
         run: |
-          jq '{hot: .hot, items: (.rest | group_by(.category) | map({ (.[0].category): . }) | add)}' output/parted.json > output/combined.json
+          jq '{hots: .hots, items: (.rest | group_by(.category) | map({ (.[0].category): . }) | add)}' output/parted.json > output/combined.json
           yq eval -P output/combined.json > output/combined.yaml
 
       - name: prepare_site
