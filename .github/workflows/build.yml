@@ -41,6 +41,7 @@ jobs:
               FILE_PATH="docs/${SORT}.yml"
               if [ -f "$FILE_PATH" ]; then
                 if FILE_CONTENT=$(yq eval -o=json "$FILE_PATH" 2>/dev/null); then
+                  FILE_CONTENT=$(echo "$FILE_CONTENT" | jq --arg filename "$SORT" '. + {_filename: $filename}')
                   HOTS=$(jq --argjson new_item "$FILE_CONTENT" \
                             '. + [$new_item]' <<< "$HOTS")
                 else
@@ -60,30 +61,43 @@ jobs:
       - name: Create all.json
         run: |
           if [ $(ls docs/*.yml 2>/dev/null | wc -l) -gt 0 ]; then
-            yq eval-all '[.]' -o=json docs/*.yml > output/all.json
+            mkdir -p tmp/items
+            
+            for file in docs/*.yml; do
+              filename=$(basename "$file" .yml)
+              yq eval -o=json "$file" | jq --arg filename "$filename" '. + {_filename: $filename}' > "tmp/items/${filename}.json"
+            done
+            
+            jq -s 'sort_by(._filename)' tmp/items/*.json > output/all.json
           else
             echo '[]' > output/all.json
           fi
-          
-      - name: Debug outputs
-        run: |
-          echo "===== hots.json content ====="
-          cat tmp/hots.json
-          echo -e "\n\n===== all.json content ====="
-          cat output/all.json | jq . || true
           
       - name: Process and combine data
         run: |
           jq --slurpfile hots tmp/hots.json \
              '{
                 hots: $hots[0],
-                items: [group_by(.category)[] | {(.[0].category): .}] | add
+                items: map(del(._filename))
               }' \
              output/all.json > output/combined.json
              
       - name: Convert JSON to YAML
         run: |
           yq eval -P -o=yaml output/combined.json > output/combined.yaml
+
+      - name: Add index.html
+        run: |
+          echo '<!DOCTYPE html>
+          <html>
+          <head>
+            <title>Documentation</title>
+            <meta http-equiv="refresh" content="0; url=combined.yaml">
+          </head>
+          <body>
+            <p>Redirecting to <a href="combined.yaml">combined.yaml</a></p>
+          </body>
+          </html>' > output/index.html
 
       - name: prepare_site
         run: |
