@@ -2,9 +2,7 @@ name: Build and Publish
 
 on:
   push:
-    branches:
-      - main
-      - dev
+    branches: [ main ]
     paths:
       - 'docs/*.yml'
   workflow_dispatch:
@@ -17,8 +15,14 @@ permissions:
 jobs:
   build:
     runs-on: ubuntu-latest
+
     steps:
-      - uses: actions/checkout@v4
+      - name: checkout
+        uses: actions/checkout@v4
+
+      - name: install-jq
+        run: |
+          sudo apt-get update && sudo apt-get install -y jq
 
       - name: read_hot_sorts
         id: hot
@@ -26,27 +30,23 @@ jobs:
           HOTS="${{ secrets.SECRET_SORT }}"
           echo "hot_sorts=$HOTS" >> $GITHUB_OUTPUT
 
-      - name: merge_docs
+      - name: merge_docs_to_json
         run: |
           mkdir -p output
-          # load all docs into JSON array
-          yq eval -o=json '[ docs/*.yml ]' . > output/all.json
+          yq eval-all -o=json '[.]' docs/*.yml > output/all.json
 
       - name: extract_hot_and_rest
         run: |
           HOTS="${{ steps.hot.outputs.hot_sorts }}"
-          # split comma separated
-          HOT_ARRAY=(${HOTS//,/ })
-          # build hot list
-          HOT_JSON=$(jq -n '$ARGS.positional as $arr | {hot: map(. as $item | select($arr | index($item.sort))) }' --args "${HOT_ARRAY[@]}" -- slurpfile inp output/all.json <<< '$inp')
-          # build rest
-          REST=$(jq --argjson hotlist "$(jq -c '.hot' <<< "$HOT_JSON")" '[ .[] | select((.sort | IN(...)) | not) ]' output/all.json)
-          echo "$HOT_JSON" > output/withhot.json
-          jq --argjson rest "$REST" '.hot = (.hot) | .rest = $rest' output/withhot.json > output/parted.json
+          IFS=',' read -ra HOT_ARRAY <<< "$HOTS"
+          HOT_JSON=$(jq -n --argjson inp "$(cat output/all.json)" \
+            --argjson hotlist "$(printf '%s\n' "${HOT_ARRAY[@]}" | jq -R -s -c 'split("\n")[:-1]')" \
+            '{hot: ($inp | map(select(.sort as $s | $hotlist | index($s)))) , rest: ($inp | map(select(.sort as $s | $hotlist | index($s) | not)))}')
+          echo "$HOT_JSON" > output/parted.json
 
-      - name: group_by_category
+      - name: group_items_by_category
         run: |
-          jq '{ hot: .hot, items: ( .rest | group_by(.category) | map({ (.[0].category): . }) | add ) }' output/parted.json > output/combined.json
+          jq '{hot: .hot, items: (.rest | group_by(.category) | map({ (.[0].category): . }) | add)}' output/parted.json > output/combined.json
           yq eval -P output/combined.json > output/combined.yaml
 
       - name: prepare_site
