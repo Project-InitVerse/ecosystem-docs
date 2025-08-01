@@ -3,8 +3,8 @@ name: Build and Publish
 on:
   push:
     branches: [ main ]
-    paths:
-      - 'docs/*.yml'
+    # paths:
+    #   - 'docs/*.yml'
   workflow_dispatch:
 
 permissions:
