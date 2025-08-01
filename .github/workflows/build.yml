@@ -104,6 +104,7 @@ jobs:
           mkdir site
           cp output/combined.json site/
           cp output/combined.yaml site/
+          cp output/index.html site/
 
       - name: upload_pages
         uses: actions/upload-pages-artifact@v3
