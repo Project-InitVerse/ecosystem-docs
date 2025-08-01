@@ -39,21 +39,27 @@ jobs:
             IFS=',' read -ra SORT_FILES <<< "${{ secrets.SECRET_SORT }}"
             HOT_IDS="[]"
             for SORT in "${SORT_FILES[@]}"; do
-              FILE_PATH="docs/${SORT}.yml"
-              if [ -f "$FILE_PATH" ]; then
-                ID=$(yq eval '.id' "$FILE_PATH" 2>/dev/null)
-                
-                if [ -z "$ID" ] || [ "$ID" = "null" ]; then
-                  echo "Error: ID is missing or null in $FILE_PATH"
-                  exit 1
+              # 直接从文件名获取ID（去掉扩展名）
+              ID="${SORT%.*}"
+              
+              # 检查文件是否存在
+              FILE_PATH="docs/${SORT}"
+              if [ ! -f "$FILE_PATH" ]; then
+                # 尝试添加 .yml 扩展名
+                if [ -f "${FILE_PATH}.yml" ]; then
+                  FILE_PATH="${FILE_PATH}.yml"
+                elif [ -f "${FILE_PATH}.yaml" ]; then
+                  FILE_PATH="${FILE_PATH}.yaml"
+                else
+                  echo "Warning: File $FILE_PATH does not exist (tried .yml and .yaml extensions)."
+                  continue
                 fi
-                
-                HOT_IDS=$(jq --arg id "$ID" '. + [$id]' <<< "$HOT_IDS")
-              else
-                echo "Warning: File $FILE_PATH does not exist."
               fi
+              
+              HOT_IDS=$(jq --arg id "$ID" '. + [$id]' <<< "$HOT_IDS")
             done
             
+            # 使用正确的输出格式
             echo "hots=$(echo $HOT_IDS | jq -c .)" >> $GITHUB_OUTPUT
           else
             echo "SECRET_SORT is empty, initializing empty hots"
@@ -62,20 +68,19 @@ jobs:
 
       - name: Create all.json
         run: |
-          if [ $(ls docs/*.yml 2>/dev/null | wc -l) -gt 0 ]; then
+          if [ $(ls docs/*.yml docs/*.yaml 2>/dev/null | wc -l) -gt 0 ]; then
             mkdir -p tmp/items
             
-            for file in docs/*.yml; do
-              filename=$(basename "$file" .yml)
+            for file in docs/*.yml docs/*.yaml; do
+              # 从文件名获取ID（不带扩展名）
+              filename=$(basename "$file")
+              id="${filename%.*}"
               
-              yq eval -o=json "$file" > "tmp/items/${filename}.json"
-              
-              if ! jq -e '.id' "tmp/items/${filename}.json" > /dev/null; then
-                echo "Error: ID is missing in $file"
-                exit 1
-              fi
+              # 转换为JSON并添加id字段
+              yq eval -o=json "$file" | jq --arg id "$id" '. + {id: $id}' > "tmp/items/${filename}.json"
             done
             
+            # 合并所有文件并按ID排序
             jq -s 'sort_by(.id)' tmp/items/*.json > output/all.json
           else
             echo '[]' > output/all.json
@@ -88,6 +93,7 @@ jobs:
           
       - name: Process and combine data
         run: |
+          # 从步骤输出中获取hots数组
           HOT_IDS="${{ steps.load_hot_ids.outputs.hots }}"
           
           jq --argjson hots "$HOT_IDS" \
