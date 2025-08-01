@@ -58,7 +58,7 @@ jobs:
         run: |
           HOT_IDS="${{ steps.prepare_hots.outputs.hots }}"
           
-          jq --argjson hots "$HOT_IDS" \
+          jq --arg hots "$HOT_IDS" \
              '{
                 hots: $hots,
                 items: .
