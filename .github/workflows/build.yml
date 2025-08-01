@@ -1,75 +1,62 @@
-name: Build and Publish
+name: Generate Documentation
 
 on:
   push:
     branches:
       - main
-      - dev
-    # paths:
-    #   - 'docs/*.yml'
   workflow_dispatch:
-
-permissions:
-  contents: read
-  pages: write
-  id-token: write
 
 jobs:
   build:
     runs-on: ubuntu-latest
 
     steps:
-      - name: checkout
+      - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: install-jq
+      - name: Set up yq and jq
         run: |
-          sudo apt-get update && sudo apt-get install -y jq
+          sudo apt-get update
+          sudo apt-get install -y jq
+          wget https://github.com/mikefarah/yq/releases/download/v4.15.1/yq_linux_amd64 -O /usr/local/bin/yq
+          chmod +x /usr/local/bin/yq
 
-      - name: read_hots
-        id: hot
+      - name: Load and merge YAML files into hots
         run: |
-          HOTS="${{ secrets.SECRET_SORT }}"
-          echo "hots=$HOTS" >> $GITHUB_OUTPUT
+          IFS=',' read -ra SORT_FILES <<< "${{ secrets.SECRET_SORT }}"
+          
+          HOTS="[]"
 
-      - name: merge_docs_to_json
-        run: |
-          mkdir -p output
-          # load all docs into JSON array
-          yq eval-all -o=json '[.]' docs/*.yml > output/all.json
+          for SORT in "${SORT_FILES[@]}"; do
+            FILE_PATH="docs/${SORT}.yml"
+            if [ -f "$FILE_PATH" ]; then
+              FILE_CONTENT=$(yq eval -o=json "$FILE_PATH")
+              HOTS=$(jq --argjson new_item "$FILE_CONTENT" \
+                        '$HOT_LIST + [$new_item]' <<< "$HOTS")
+            else
+              echo "Warning: File $FILE_PATH does not exist."
+            fi
+          done
 
-      - name: extract_hots_and_rest
-        run: |
-          HOTS="${{ steps.hot.outputs.hots }}"
-          IFS=',' read -ra HOT_ARRAY <<< "$HOTS"
-          HOT_LIST=$(printf '%s\n' "${HOT_ARRAY[@]}" | jq -R -s -c 'split("\n")[:-1]')
-          jq \
-            --argjson list "$HOT_LIST" \
-            '. as $inp
-            | { hots: ($inp | map(select(.sort | tostring | IN($list[])))),
-                rest: ($inp | map(select(.sort | tostring | IN($list[]) | not))) }' \
-            output/all.json > output/parted.json
-          cat output/parted.json
 
-      - name: group_items_by_category
+          echo "hots=$HOTS" >> $GITHUB_ENV
+
+      - name: Create all.json
         run: |
-          jq '{hots: .hots, items: (.rest | group_by(.category) | map({ (.[0].category): . }) | add)}' output/parted.json > output/combined.json
+          yq eval -o=json 'docs/*.yml' . > output/all.json
+
+      - name: Process and combine data
+        run: |
+          jq --argjson hots "$HOTS" \
+             '{ hots: $hots, items: (.rest | group_by(.category) | map({ (.[0].category): . }) | add)}' \
+             output/all.json > output/combined.json
+
+      - name: Convert JSON to YAML
+        run: |
           yq eval -P -o=yaml output/combined.json > output/combined.yaml
 
-      - name: prepare_site
-        run: |
-          mkdir site
-          cp output/combined.json site/
-          cp output/combined.yaml site/
-
-      - name: upload_pages
-        uses: actions/upload-pages-artifact@v3
-        with:
-          path: site
-
-  deploy:
-    needs: build
-    runs-on: ubuntu-latest
-    steps:
-      - id: deploy
+      - name: Deploy to GitHub Pages
         uses: actions/deploy-pages@v4
+        with:
+          branch: gh-pages
+          folder: output
