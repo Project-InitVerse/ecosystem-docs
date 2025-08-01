@@ -7,13 +7,14 @@ on:
       - dev
   workflow_dispatch:
 
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
 jobs:
   build:
     runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      pages: write
-      id-token: write
 
     steps:
       - name: Checkout repository
@@ -84,10 +85,16 @@ jobs:
         run: |
           yq eval -P -o=yaml output/combined.json > output/combined.yaml
 
+      - name: prepare_site
+        run: |
+          mkdir site
+          cp output/combined.json site/
+          cp output/combined.yaml site/
+
       - name: upload_pages
         uses: actions/upload-pages-artifact@v3
         with:
-          path: 'output/'
+          path: site
 
   deploy:
     needs: build
