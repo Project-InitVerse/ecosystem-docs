@@ -39,7 +39,6 @@ jobs:
             fi
           done
 
-
           echo "hots=$HOTS" >> $GITHUB_ENV
 
       - name: Create all.json
