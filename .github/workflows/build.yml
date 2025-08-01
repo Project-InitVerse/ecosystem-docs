@@ -42,15 +42,16 @@ jobs:
         run: |
           HOTS="${{ steps.hot.outputs.hots }}"
           IFS=',' read -ra HOT_ARRAY <<< "$HOTS"
-          HOT_JSON=$(jq -n --argjson inp "$(cat output/all.json)" \
-            --argjson list "$(printf '%s\n' "${HOT_ARRAY[@]}" | jq -R -s -c 'split("\n")[:-1]')" \
-            '{hots: ($inp | map(select(.sort as $s | $list | index($s))) ), rest: ($inp | map(select(.sort as $s | $list | index($s) | not)))}')
-          echo "$HOT_JSON" > output/parted.json
+          HOT_LIST=$(printf '%s\n' "${HOT_ARRAY[@]}" | jq -R -s -c 'split("\n")[:-1]')
+          jq \
+            --argjson list "$HOT_LIST" \
+            '{ hots: ( [.[] | select(.sort as $s | $list | index($s))] ), rest: ( [.[] | select(.sort as $s | ($list | index($s)) | not)] ) }' \
+            output/all.json > output/parted.json
 
       - name: group_items_by_category
         run: |
           jq '{hots: .hots, items: (.rest | group_by(.category) | map({ (.[0].category): . }) | add)}' output/parted.json > output/combined.json
-          yq eval -P output/combined.json > output/combined.yaml
+          yq eval -P -o=yaml output/combined.json > output/combined.yaml
 
       - name: prepare_site
         run: |
