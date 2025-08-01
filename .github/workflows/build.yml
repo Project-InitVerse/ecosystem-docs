@@ -34,7 +34,7 @@ jobs:
           
       - name: Prepare hots array
         id: prepare_hots
-        run: echo "hots=\"${{ secrets.SECRET_SORT }}\"" >> $GITHUB_OUTPUT
+        run: echo "hots=${{ secrets.SECRET_SORT }}" >> $GITHUB_OUTPUT
 
       - name: Create all.json
         run: |
