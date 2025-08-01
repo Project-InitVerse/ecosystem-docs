@@ -22,9 +22,11 @@ jobs:
           wget https://github.com/mikefarah/yq/releases/download/v4.15.1/yq_linux_amd64 -O /usr/local/bin/yq
           chmod +x /usr/local/bin/yq
           
-      - name: Create temp directory
-        run: mkdir -p tmp
-
+      - name: Create directories
+        run: |
+          mkdir -p tmp
+          mkdir -p output
+          
       - name: Load and merge YAML files into hots
         run: |
           if [ -n "${{ secrets.SECRET_SORT }}" ]; then
@@ -50,27 +52,27 @@ jobs:
             echo "[]" > tmp/hots.json
           fi
 
-      - name: Create output directory
-        run: mkdir -p output
-
+      # 修复点：使用正确的yq语法处理多个文件
       - name: Create all.json
         run: |
-          if ls docs/*.yml &> /dev/null; then
-            yq eval -s '[.]' -o=json docs/*.yml > output/all.json
+          if [ $(ls docs/*.yml 2>/dev/null | wc -l) -gt 0 ]; then
+            # 使用eval-all处理多个文件
+            yq eval-all '[.]' -o=json docs/*.yml > output/all.json
           else
             echo '[]' > output/all.json
           fi
           
-      - name: Debug hots content  # 调试步骤
+      - name: Debug outputs
         run: |
-          echo "HOTS content:"
+          echo "===== hots.json content ====="
           cat tmp/hots.json
-          jq '.' tmp/hots.json || true
+          echo -e "\n\n===== all.json content ====="
+          cat output/all.json | jq . || true
           
       - name: Process and combine data
         run: |
           jq --slurpfile hots tmp/hots.json \
-             '{ hots: $hots[0], items: (group_by(.category) | map({ (.[0].category): . }) | add) }' \
+             '{ hots: $hots[0], items: (group_by(.category) | map({ (.[0].category): . }) | add }' \
              output/all.json > output/combined.json
              
       - name: Convert JSON to YAML
