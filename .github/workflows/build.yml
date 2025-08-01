@@ -32,30 +32,28 @@ jobs:
           mkdir -p tmp
           mkdir -p output
           
-      - name: Load and merge YAML files into hots
+      - name: Load and merge hot IDs
         run: |
           if [ -n "${{ secrets.SECRET_SORT }}" ]; then
             IFS=',' read -ra SORT_FILES <<< "${{ secrets.SECRET_SORT }}"
-            HOTS="[]"
+            HOT_IDS="[]"
             for SORT in "${SORT_FILES[@]}"; do
               FILE_PATH="docs/${SORT}.yml"
               if [ -f "$FILE_PATH" ]; then
-                if FILE_CONTENT=$(yq eval -o=json "$FILE_PATH" 2>/dev/null); then
-                  FILE_CONTENT=$(echo "$FILE_CONTENT" | jq --arg filename "$SORT" '. + {_filename: $filename}')
-                  HOTS=$(jq --argjson new_item "$FILE_CONTENT" \
-                            '. + [$new_item]' <<< "$HOTS")
+                if ID=$(yq eval '.id' "$FILE_PATH" 2>/dev/null); then
+                  HOT_IDS=$(jq --arg id "$ID" '. + [$id]' <<< "$HOT_IDS")
                 else
-                  echo "Error: Failed to parse $FILE_PATH"
+                  echo "Error: Failed to extract ID from $FILE_PATH"
                   exit 1
                 fi
               else
                 echo "Warning: File $FILE_PATH does not exist."
               fi
             done
-            echo "$HOTS" > tmp/hots.json
+            echo "hots=$HOT_IDS" >> $GITHUB_OUTPUT
           else
             echo "SECRET_SORT is empty, initializing empty hots"
-            echo "[]" > tmp/hots.json
+            echo "hots=[]" >> $GITHUB_OUTPUT
           fi
 
       - name: Create all.json
@@ -68,17 +66,19 @@ jobs:
               yq eval -o=json "$file" | jq --arg filename "$filename" '. + {_filename: $filename}' > "tmp/items/${filename}.json"
             done
             
-            jq -s 'sort_by(._filename)' tmp/items/*.json > output/all.json
+            jq -s 'sort_by(._filename) | map(del(._filename))' tmp/items/*.json > output/all.json
           else
             echo '[]' > output/all.json
           fi
           
       - name: Process and combine data
         run: |
-          jq --slurpfile hots tmp/hots.json \
+          HOT_IDS=${{ steps.load_hot_ids.outputs.hots }}
+          
+          jq --argjson hots "$HOT_IDS" \
              '{
-                hots: $hots[0],
-                items: map(del(._filename))
+                hots: $hots,
+                items: .
               }' \
              output/all.json > output/combined.json
              
