@@ -10,7 +10,6 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
-
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -21,34 +20,51 @@ jobs:
           sudo apt-get install -y jq
           wget https://github.com/mikefarah/yq/releases/download/v4.15.1/yq_linux_amd64 -O /usr/local/bin/yq
           chmod +x /usr/local/bin/yq
-
+          
       - name: Load and merge YAML files into hots
         run: |
-          IFS=',' read -ra SORT_FILES <<< "${{ secrets.SECRET_SORT }}"
-          HOTS="[]"
-          HOT_LIST="[]"
-          for SORT in "${SORT_FILES[@]}"; do
-            FILE_PATH="docs/${SORT}.yml"
-            if [ -f "$FILE_PATH" ]; then
-              FILE_CONTENT=$(yq eval -o=json "$FILE_PATH")
-              HOTS=$(jq --argjson new_item "$FILE_CONTENT" \
-                        '$HOT_LIST + [$new_item]' <<< "$HOTS")
-            else
-              echo "Warning: File $FILE_PATH does not exist."
-            fi
-          done
-          echo "hots=$HOTS" >> $GITHUB_ENV
+          if [ -n "${{ secrets.SECRET_SORT }}" ]; then
+            IFS=',' read -ra SORT_FILES <<< "${{ secrets.SECRET_SORT }}"
+            HOTS="[]"
+            for SORT in "${SORT_FILES[@]}"; do
+              FILE_PATH="docs/${SORT}.yml"
+              if [ -f "$FILE_PATH" ]; then
+                if FILE_CONTENT=$(yq eval -o=json "$FILE_PATH" 2>/dev/null); then
+                  HOTS=$(jq --argjson new_item "$FILE_CONTENT" \
+                            '. + [$new_item]' <<< "$HOTS")
+                else
+                  echo "Error: Failed to parse $FILE_PATH"
+                  exit 1
+                fi
+              else
+                echo "Warning: File $FILE_PATH does not exist."
+              fi
+            done
+            echo "hots=$HOTS" >> $GITHUB_ENV
+          else
+            echo "SECRET_SORT is empty, initializing empty hots"
+            echo "hots=[]" >> $GITHUB_ENV
+          fi
+      - name: Create output directory
+        run: mkdir -p output
 
       - name: Create all.json
         run: |
-          yq eval -o=json 'docs/*.yml' . > output/all.json
-
+          # 处理0个/1个/多个文件的情况
+          if ls docs/*.yml &> /dev/null; then
+            yq eval -s '[.]' -o=json docs/*.yml > output/all.json
+          else
+            echo '[]' > output/all.json
+          fi
+          
       - name: Process and combine data
         run: |
-          jq --argjson hots "$HOTS" \
-             '{ hots: $hots, items: (.rest | group_by(.category) | map({ (.[0].category): . }) | add)}' \
+          echo "HOTS content: ${{ env.hots }}"
+          
+          jq --argjson hots "${{ env.hots }}" \
+             '{ hots: $hots, items: (group_by(.category) | map({ (.[0].category): . }) | add }' \
              output/all.json > output/combined.json
-
+             
       - name: Convert JSON to YAML
         run: |
           yq eval -P -o=yaml output/combined.json > output/combined.yaml
