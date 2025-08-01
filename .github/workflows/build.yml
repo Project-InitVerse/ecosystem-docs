@@ -1,0 +1,68 @@
+name: Build and Publish
+
+on:
+  push:
+    branches:
+      - main
+      - dev
+    paths:
+      - 'docs/*.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: read_hot_sorts
+        id: hot
+        run: |
+          HOTS="${{ secrets.SECRET_SORT }}"
+          echo "hot_sorts=$HOTS" >> $GITHUB_OUTPUT
+
+      - name: merge_docs
+        run: |
+          mkdir -p output
+          # load all docs into JSON array
+          yq eval -o=json '[ docs/*.yml ]' . > output/all.json
+
+      - name: extract_hot_and_rest
+        run: |
+          HOTS="${{ steps.hot.outputs.hot_sorts }}"
+          # split comma separated
+          HOT_ARRAY=(${HOTS//,/ })
+          # build hot list
+          HOT_JSON=$(jq -n '$ARGS.positional as $arr | {hot: map(. as $item | select($arr | index($item.sort))) }' --args "${HOT_ARRAY[@]}" -- slurpfile inp output/all.json <<< '$inp')
+          # build rest
+          REST=$(jq --argjson hotlist "$(jq -c '.hot' <<< "$HOT_JSON")" '[ .[] | select((.sort | IN(...)) | not) ]' output/all.json)
+          echo "$HOT_JSON" > output/withhot.json
+          jq --argjson rest "$REST" '.hot = (.hot) | .rest = $rest' output/withhot.json > output/parted.json
+
+      - name: group_by_category
+        run: |
+          jq '{ hot: .hot, items: ( .rest | group_by(.category) | map({ (.[0].category): . }) | add ) }' output/parted.json > output/combined.json
+          yq eval -P output/combined.json > output/combined.yaml
+
+      - name: prepare_site
+        run: |
+          mkdir site
+          cp output/combined.json site/
+          cp output/combined.yaml site/
+
+      - name: upload_pages
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - id: deploy
+        uses: actions/deploy-pages@v4
