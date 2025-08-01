@@ -25,9 +25,8 @@ jobs:
       - name: Load and merge YAML files into hots
         run: |
           IFS=',' read -ra SORT_FILES <<< "${{ secrets.SECRET_SORT }}"
-          
           HOTS="[]"
-
+          HOT_LIST="[]"
           for SORT in "${SORT_FILES[@]}"; do
             FILE_PATH="docs/${SORT}.yml"
             if [ -f "$FILE_PATH" ]; then
@@ -38,7 +37,6 @@ jobs:
               echo "Warning: File $FILE_PATH does not exist."
             fi
           done
-
           echo "hots=$HOTS" >> $GITHUB_ENV
 
       - name: Create all.json
