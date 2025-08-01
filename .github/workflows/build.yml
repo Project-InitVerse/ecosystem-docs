@@ -10,6 +10,7 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
+
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -21,6 +22,9 @@ jobs:
           wget https://github.com/mikefarah/yq/releases/download/v4.15.1/yq_linux_amd64 -O /usr/local/bin/yq
           chmod +x /usr/local/bin/yq
           
+      - name: Create temp directory
+        run: mkdir -p tmp
+
       - name: Load and merge YAML files into hots
         run: |
           if [ -n "${{ secrets.SECRET_SORT }}" ]; then
@@ -40,29 +44,33 @@ jobs:
                 echo "Warning: File $FILE_PATH does not exist."
               fi
             done
-            echo "hots=$HOTS" >> $GITHUB_ENV
+            echo "$HOTS" > tmp/hots.json
           else
             echo "SECRET_SORT is empty, initializing empty hots"
-            echo "hots=[]" >> $GITHUB_ENV
+            echo "[]" > tmp/hots.json
           fi
+
       - name: Create output directory
         run: mkdir -p output
 
       - name: Create all.json
         run: |
-          # 处理0个/1个/多个文件的情况
           if ls docs/*.yml &> /dev/null; then
             yq eval -s '[.]' -o=json docs/*.yml > output/all.json
           else
             echo '[]' > output/all.json
           fi
           
+      - name: Debug hots content  # 调试步骤
+        run: |
+          echo "HOTS content:"
+          cat tmp/hots.json
+          jq '.' tmp/hots.json || true
+          
       - name: Process and combine data
         run: |
-          echo "HOTS content: ${{ env.hots }}"
-          
-          jq --argjson hots "${{ env.hots }}" \
-             '{ hots: $hots, items: (group_by(.category) | map({ (.[0].category): . }) | add }' \
+          jq --slurpfile hots tmp/hots.json \
+             '{ hots: $hots[0], items: (group_by(.category) | map({ (.[0].category): . }) | add) }' \
              output/all.json > output/combined.json
              
       - name: Convert JSON to YAML
