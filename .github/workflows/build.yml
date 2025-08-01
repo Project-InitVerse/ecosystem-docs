@@ -34,13 +34,7 @@ jobs:
           
       - name: Prepare hots array
         id: prepare_hots
-        run: |
-          if [ -n "${{ secrets.SECRET_SORT }}" ]; then
-            HOT_IDS=$(echo "${{ secrets.SECRET_SORT }}" | jq -Rc 'split(",")')
-            echo "hots=$HOT_IDS" >> $GITHUB_OUTPUT
-          else
-            echo "hots=[]" >> $GITHUB_OUTPUT
-          fi
+        run: echo "hots=\"${{ secrets.SECRET_SORT }}\"" >> $GITHUB_OUTPUT
 
       - name: Create all.json
         run: |
