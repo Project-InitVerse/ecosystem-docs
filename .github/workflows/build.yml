@@ -84,8 +84,10 @@ jobs:
         run: |
           yq eval -P -o=yaml output/combined.json > output/combined.yaml
 
+      - name: Upload artifact
+        uses: actions/upload-pages-artifact@v2
+        with:
+          path: 'output/'
+
       - name: Deploy to GitHub Pages
         uses: actions/deploy-pages@v4
-        with:
-          branch: gh-pages
-          folder: output
