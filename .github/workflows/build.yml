@@ -45,7 +45,8 @@ jobs:
           HOT_LIST=$(printf '%s\n' "${HOT_ARRAY[@]}" | jq -R -s -c 'split("\n")[:-1]')
           jq \
             --argjson list "$HOT_LIST" \
-            '{ hots: ( [.[] | select(.sort as $s | $list | index($s))] ), rest: ( [.[] | select(.sort as $s | ($list | index($s)) | not)] ) }' \
+            '[ .[] | select(.sort as $s | $list | index($s)) ] as $hots \
+            | { hots: $hots, rest: ( [ .[] | select(.sort as $s | ($list | index($s) | not)) ] ) }' \
             output/all.json > output/parted.json
 
       - name: group_items_by_category
