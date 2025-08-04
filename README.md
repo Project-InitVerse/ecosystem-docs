@@ -20,10 +20,10 @@ To ensure quality and ecosystem growth, we prioritize the inclusion of projects 
 4. No scams, phishing, or malicious intent
 5. Open-source projects are strongly preferred
  ## How to Submit
-1.**Fork this repository**
-2.Inside the projects/ folder, create a new file with the next available number, e.g., 002.yml
-3.Fill in your project information (see Field Description below)
-4.Submit a Pull Request , we'll review and respond within 3–7 business days
+1. **Fork this repository**
+2. Inside the projects/ folder, create a new file with the next available number, e.g., 002.yml
+3. Fill in your project information (see Field Description below)
+4. Submit a Pull Request , we'll review and respond within 3–7 business days
  ## Example File Structure (projects/002.yml）
  ```yaml
 name: 'NovaHash Pool'
