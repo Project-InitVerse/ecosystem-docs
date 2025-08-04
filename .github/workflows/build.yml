@@ -38,11 +38,11 @@ jobs:
 
       - name: Create all.json
         run: |
-          if [ $(ls docs/*.yml docs/*.yaml 2>/dev/null | wc -l) -gt 0 ]; then
+          if [ $(ls projects/*.yml projects/*.yaml 2>/dev/null | wc -l) -gt 0 ]; then
             mkdir -p tmp/items
             
             # 处理每个文件
-            for file in docs/*.yml docs/*.yaml; do
+            for file in projects/*.yml projects/*.yaml; do
               filename=$(basename "$file")
               id="${filename%.*}"
               
